@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>爆速キャッシュフロー診断</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        :root { --primary: #2563eb; --bg: #f1f5f9; --card: #ffffff; }
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: var(--bg); margin: 0; padding: 10px; color: #1e293b; }
+        .app-container { max-width: 500px; margin: auto; }
+        h2 { font-size: 1.1rem; margin: 10px 0; color: var(--primary); text-align: center; }
+        
+        /* メイン数値表示 */
+        .summary-card { background: #1e293b; color: white; border-radius: 16px; padding: 15px; text-align: center; margin-bottom: 10px; }
+        .result-age { font-size: 1.8rem; font-weight: bold; color: #fbbf24; margin: 5px 0; }
+        .result-desc { font-size: 0.8rem; opacity: 0.8; }
+
+        /* グラフ表示 */
+        .card-chart { background: var(--card); border-radius: 16px; padding: 15px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); margin-bottom: 10px; }
+        .chart-container { position: relative; height: 200px; width: 100%; }
+
+        /* 入力エリア */
+        .card-input { background: var(--card); border-radius: 16px; padding: 15px 20px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
+        .input-group { margin-bottom: 18px; }
+        .label-row { display: flex; justify-content: space-between; margin-bottom: 6px; font-weight: bold; font-size: 0.85rem; }
+        .val-display { color: var(--primary); font-size: 1rem; }
+        
+        /* スライダーのデザイン */
+        input[type="range"] { width: 100%; height: 6px; border-radius: 5px; background: #e2e8f0; outline: none; -webkit-appearance: none; }
+        input[type="range"]::-webkit-slider-thumb { -webkit-appearance: none; width: 22px; height: 22px; background: var(--primary); border-radius: 50%; border: 3px solid white; box-shadow: 0 2px 4px rgba(0,0,0,0.2); }
+
+        .footer-note { font-size: 0.65rem; color: #94a3b8; text-align: center; margin-top: 10px; line-height: 1.4; }
+    </style>
+</head>
+<body>
+
+<div class="app-container">
+    <h2>⚡️ キャッシュフロー診断</h2>
+
+    <div class="summary-card">
+        <div id="statusText">資産寿命の目安</div>
+        <div id="resultDisplay" class="result-age">-- 歳</div>
+        <div id="resultDesc" class="result-desc">（95歳時点の推定残高: -- 万円）</div>
+    </div>
+
+    <div class="card-chart">
+        <div class="chart-container">
+            <canvas id="mainChart"></canvas>
+        </div>
+    </div>
+
+    <div class="card-input">
+        <!-- 現在の年齢 -->
+        <div class="input-group">
+            <div class="label-row"><span>現在の年齢</span><span class="val-display" id="disp_currentAge">40歳</span></div>
+            <input type="range" id="currentAge" min="20" max="80" step="1" value="40" oninput="update()">
+        </div>
+        <!-- 現在の資産 -->
+        <div class="input-group">
+            <div class="label-row"><span>現在の資産額</span><span class="val-display" id="disp_assets">500万円</span></div>
+            <input type="range" id="assets" min="0" max="10000" step="50" value="500" oninput="update()">
+        </div>
+        <!-- 年収 -->
+        <div class="input-group">
+            <div class="label-row"><span>年間手取り収入</span><span class="val-display" id="disp_income">600万円</span></div>
+            <input type="range" id="income" min="100" max="2000" step="50" value="600" oninput="update()">
+        </div>
+        <!-- 年間支出 -->
+        <div class="input-group">
+            <div class="label-row"><span>年間支出</span><span class="val-display" id="disp_expense">450万円</span></div>
+            <input type="range" id="expense" min="50" max="1500" step="10" value="450" oninput="update()">
+        </div>
+        <!-- 運用利回り -->
+        <div class="input-group">
+            <div class="label-row"><span>想定利回り (NISA等)</span><span class="val-display" id="disp_yield">3.0%</span></div>
+            <input type="range" id="yield" min="0" max="10" step="0.1" value="3.0" oninput="update()">
+        </div>
+        <!-- 退職年齢 -->
+        <div class="input-group" style="margin-bottom:5px;">
+            <div class="label-row"><span>リタイア年齢</span><span class="val-display" id="disp_retire">65歳</span></div>
+            <input type="range" id="retire" min="50" max="85" step="1" value="65" oninput="update()">
+        </div>
+    </div>
+
+    <div class="footer-note">
+        ※95歳までの推移をシミュレーション<br>
+        ※リタイア後の収入は年金想定で一律200万円として計算
+    </div>
+</div>
+
+<script>
+let chart = null;
+
+function update() {
+    // 値の取得
+    const config = {
+        age: parseInt(document.getElementById('currentAge').value),
+        assets: parseInt(document.getElementById('assets').value),
+        income: parseInt(document.getElementById('income').value),
+        expense: parseInt(document.getElementById('expense').value),
+        yield: parseFloat(document.getElementById('yield').value) / 100,
+        retire: parseInt(document.getElementById('retire').value),
+        pension: 200
+    };
+
+    // 数値表示の更新
+    document.getElementById('disp_currentAge').innerText = config.age + "歳";
+    document.getElementById('disp_assets').innerText = config.assets + "万円";
+    document.getElementById('disp_income').innerText = config.income + "万円";
+    document.getElementById('disp_expense').innerText = config.expense + "万円";
+    document.getElementById('disp_yield').innerText = (config.yield * 100).toFixed(1) + "%";
+    document.getElementById('disp_retire').innerText = config.retire + "歳";
+
+    // シミュレーション実行
+    let currentAssets = config.assets;
+    const labels = [];
+    const data = [];
+    let deadAge = null;
+
+    // 選択された年齢から95歳までループ
+    for (let a = config.age; a <= 95; a++) {
+        labels.push(a);
+        
+        // 年利の適用（年初の資産に対して）
+        if (currentAssets > 0) {
+            currentAssets *= (1 + config.yield);
+        }
+        
+        // 収支の加減算
+        let inc = (a < config.retire) ? config.income : config.pension;
+        currentAssets += (inc - config.expense);
+        
+        data.push(Math.floor(currentAssets));
+        
+        // 初めてマイナスになった年齢を記録
+        if (currentAssets < 0 && deadAge === null) {
+            deadAge = a;
+        }
+    }
+
+    // 結果の反映
+    const resultDisplay = document.getElementById('resultDisplay');
+    const statusText = document.getElementById('statusText');
+    
+    if (deadAge) {
+        resultDisplay.innerText = deadAge + "歳で資産が底をつく";
+        resultDisplay.style.color = "#f87171"; // 赤
+        statusText.innerText = "⚠️ 資産寿命の警告";
+    } else {
+        resultDisplay.innerText = "100歳以降も継続可能";
+        resultDisplay.style.color = "#fbbf24"; // 黄/金
+        statusText.innerText = "✅ 良好な資金推移";
+    }
+    document.getElementById('resultDesc').innerText = `（95歳時点の推定残高: ${Math.floor(currentAssets).toLocaleString()} 万円）`;
+
+    drawChart(labels, data);
+}
+
+function drawChart(labels, data) {
+    const ctx = document.getElementById('mainChart').getContext('2d');
+    if (chart) chart.destroy();
+    chart = new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels: labels,
+            datasets: [{
+                data: data,
+                borderColor: '#2563eb',
+                borderWidth: 3,
+                pointRadius: 0,
+                fill: true,
+                backgroundColor: 'rgba(37, 99, 235, 0.1)',
+                tension: 0.3
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: { legend: { display: false } },
+            scales: {
+                x: { 
+                    ticks: { maxRotation: 0, autoSkip: true, maxTicksLimit: 6, font: { size: 10 } },
+                    grid: { display: false }
+                },
+                y: { 
+                    grid: { color: '#e2e8f0' },
+                    ticks: { font: { size: 10 } }
+                }
+            }
+        }
+    });
+}
+
+// 初期化
+update();
+</script>
+
+</body>
+</html>
